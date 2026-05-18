@@ -1,351 +1,404 @@
-// 农业数字孪生系统 - 主程序
-// Three.js 场景初始化与交互逻辑
+/**
+ * app.js - 农业数字孪生系统主程序
+ * 统一数据源：data.js (fieldList, deviceList, pathList, selectedFieldId, drawingMode, drawingPoints, drawingLine, drawingVertexMeshes, editingVertexMeshes, selectedVertexInfo, isDraggingVertex, editingFieldId, isSimulating, simFrameId)
+ */
 
-let scene, camera, renderer, raycaster, mouse;
-let mode = 'none';  // 当前模式: draw-field, draw-path, simulate
-let fieldPoints = [];  // 田块边界点
-let vehicles = [];  // 农机数组
-let paths = [];  // 路径数组
+// Three.js 全局对象
+var scene, camera, renderer, raycaster, mouse;
+var terrainGround = null;
 
-// 初始化场景
+// 相机控制状态
+var isDragging = false;
+var isDraggingCamera = false;
+var previousMousePosition = { x: 0, y: 0 };
+
+// ==================== 初始化 ====================
+
 function init() {
-    // 创建场景
+    // 场景
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);  // 天蓝色背景
-    
-    // 创建相机
-    camera = new THREE.PerspectiveCamera(
-        60,  // 视角
-        window.innerWidth / window.innerHeight,  // 宽高比
-        0.1,  // 近平面
-        1000  // 远平面
-    );
-    camera.position.set(50, 50, 50);
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 80, 250);
+
+    // 相机
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(50, 45, 50);
     camera.lookAt(0, 0, 0);
-    
-    // 创建渲染器
+
+    // 渲染器
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     document.getElementById('canvas-container').appendChild(renderer.domElement);
-    
-    // 添加光源
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 100, 50);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
-    
-    // 创建地面
-    const groundGeometry = new THREE.PlaneGeometry(200, 200);
-    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x8fbc8f });  // 草地绿
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-    
-    // 添加网格辅助线
-    const gridHelper = new THREE.GridHelper(200, 50, 0x000000, 0x000000);
-    gridHelper.material.opacity = 0.2;
-    gridHelper.material.transparent = true;
-    scene.add(gridHelper);
-    
-    // 初始化射线投射器和鼠标坐标
+
+    // 射线检测
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2();
-    
-    // 添加鼠标点击事件
-    renderer.domElement.addEventListener('click', onCanvasClick, false);
-    
-    // 添加窗口 resize 事件
-    window.addEventListener('resize', onWindowResize, false);
-    
-    // 添加简单的相机控制（轨道控制）
-    addOrbitControl();
-    
-    updateStatus('场景初始化完成 - 可开始绘制田块');
-    
-    // 开始渲染循环
+
+    // 初始化地形
+    initTerrain();
+
+    // 事件绑定
+    var canvas = renderer.domElement;
+
+    // 点击（仅在非拖拽状态下处理）
+    canvas.addEventListener('click', onCanvasClick);
+
+    // 鼠标按下（优先顶点拾取）
+    canvas.addEventListener('mousedown', onMouseDown);
+
+    // 鼠标移动（拖拽顶点 或 旋转相机）
+    canvas.addEventListener('mousemove', onMouseMove);
+
+    // 鼠标释放
+    canvas.addEventListener('mouseup', onMouseUp);
+
+    // 右键菜单
+    canvas.addEventListener('contextmenu', onContextMenu);
+
+    // 双击
+    canvas.addEventListener('dblclick', onDoubleClick);
+
+    // 滚轮缩放
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+
+    // 键盘
+    window.addEventListener('keydown', onKeyDown);
+
+    // 窗口大小
+    window.addEventListener('resize', onResize);
+
+    // 状态
+    refreshPanel();
+    setStatus('欢迎！步骤：①绘制田块（多边形）→ ②选中田块 → ③生成弓字形路径 → ④添加设备 → ⑤开始仿真');
+
+    // 渲染循环
     animate();
 }
 
-// 简单轨道控制（避免引入额外库）
-let isDragging = false;
-let previousMousePosition = { x: 0, y: 0 };
+// ==================== 地形 ====================
 
-function addOrbitControl() {
-    renderer.domElement.addEventListener('mousedown', (e) => {
-        if (e.button === 0) {  // 左键
-            isDragging = true;
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-        }
-    });
-    
-    renderer.domElement.addEventListener('mousemove', (e) => {
-        if (!isDragging || mode !== 'none') return;
-        
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-        
-        camera.position.x -= deltaX * 0.1;
-        camera.position.z -= deltaY * 0.1;
-        
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-    });
-    
-    renderer.domElement.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
-    
-    // 滚轮缩放
-    renderer.domElement.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const scale = 1 + e.deltaY * 0.001;
-        camera.position.multiplyScalar(scale);
-    });
+function initTerrain() {
+    // 地面
+    var groundGeo = new THREE.PlaneGeometry(200, 200, 50, 50);
+    var positions = groundGeo.attributes.position;
+    for (var i = 0; i < positions.count; i++) {
+        var x = positions.getX(i);
+        var z = positions.getY(i);
+        var y = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 0.8;
+        positions.setZ(i, y);
+    }
+    groundGeo.computeVertexNormals();
+
+    var groundMat = new THREE.MeshLambertMaterial({ color: 0x8B7355, side: THREE.DoubleSide });
+    terrainGround = new THREE.Mesh(groundGeo, groundMat);
+    terrainGround.rotation.x = -Math.PI / 2;
+    terrainGround.position.y = -0.1;
+    terrainGround.receiveShadow = true;
+    terrainGround.renderOrder = 0; // 地面在最底层（顶点renderOrder=10在其上层）
+    scene.add(terrainGround);
+
+    // 网格
+    var gridHelper = new THREE.GridHelper(200, 40, 0x666666, 0x444444);
+    gridHelper.position.y = 0.05;
+    scene.add(gridHelper);
+
+    // 光源
+    var ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
+    var sun = new THREE.DirectionalLight(0xffffff, 0.9);
+    sun.position.set(50, 80, 50);
+    sun.castShadow = true;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 300;
+    sun.shadow.camera.left = -100;
+    sun.shadow.camera.right = 100;
+    sun.shadow.camera.top = 100;
+    sun.shadow.camera.bottom = -100;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    scene.add(sun);
 }
 
-// 鼠标点击事件处理
+// ==================== 事件处理 ====================
+
+/**
+ * 点击处理：射线检测优先顶点，其次地面
+ */
 function onCanvasClick(event) {
-    if (mode === 'none') return;
-    
-    // 计算鼠标在归一化设备坐标中的位置
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    
-    // 更新射线投射器
-    raycaster.setFromCamera(mouse, camera);
-    
-    // 计算与地面的交点
-    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const intersectionPoint = new THREE.Vector3();
-    raycaster.ray.intersectPlane(groundPlane, intersectionPoint);
-    
-    if (mode === 'draw-field') {
-        addFieldPoint(intersectionPoint);
-    } else if (mode === 'draw-path') {
-        addPathPoint(intersectionPoint);
+    if (event.button !== 0) return;
+    // 拖拽中不处理
+    if (isDragging || isDraggingVertex) return;
+
+    var groundPoint = getGroundPoint(event);
+    if (!groundPoint) return;
+
+    console.log('========== onCanvasClick ==========');
+    console.log('鼠标位置:', {x: event.clientX, y: event.clientY});
+    console.log('地面交点:', groundPoint);
+    console.log('当前模式:', drawingMode);
+
+    // 优先检测是否点击了顶点（第一步：顶点射线检测）
+    var vertexHit = pickVertex(groundPoint);
+
+    console.log('顶点检测结果:', vertexHit ? '✅ 命中' : '❌ 未命中');
+
+    if (vertexHit) {
+        // 点击了顶点：选中/高亮
+        console.log('选中顶点:', {index: vertexHit.vertexIndex, fieldId: vertexHit.fieldId, mode: vertexHit.mode});
+        selectVertex(vertexHit);
+        setStatus('顶点已选中（黄色高亮），可拖拽移动位置');
+        console.log('直接return，不执行地面添加顶点逻辑');
+        return; // 关键：命中顶点后直接return，不执行后面的地面添加顶点
     }
-}
 
-// 添加田块边界点
-function addFieldPoint(point) {
-    fieldPoints.push(point.clone());
-    
-    // 可视化点
-    const sphereGeometry = new THREE.SphereGeometry(0.5, 16, 16);
-    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    sphere.position.copy(point);
-    scene.add(sphere);
-    
-    // 如果已有至少3个点，绘制田块面
-    if (fieldPoints.length >= 3) {
-        drawField();
-    }
-    
-    updateStatus(`已添加 ${fieldPoints.length} 个边界点 - 继续点击添加或切换到路径规划`);
-}
-
-// 绘制田块
-function drawField() {
-    // 移除旧的田块面
-    const oldField = scene.getObjectByName('field-mesh');
-    if (oldField) scene.remove(oldField);
-    
-    // 创建田块面
-    const shape = new THREE.Shape();
-    shape.moveTo(fieldPoints[0].x, fieldPoints[0].z);
-    for (let i = 1; i < fieldPoints.length; i++) {
-        shape.lineTo(fieldPoints[i].x, fieldPoints[i].z);
-    }
-    shape.closePath();
-    
-    const geometry = new THREE.ShapeGeometry(shape);
-    const material = new THREE.MeshLambertMaterial({ 
-        color: 0x7cfc00,  // 草绿色
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.6
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.name = 'field-mesh';
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-}
-
-// 添加路径点
-function addPathPoint(point) {
-    paths.push(point.clone());
-    
-    // 可视化路径点
-    const sphereGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
-    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    sphere.position.copy(point);
-    sphere.name = 'path-point';
-    scene.add(sphere);
-    
-    // 如果有至少2个点，绘制路径线
-    if (paths.length >= 2) {
-        drawPath();
-    }
-    
-    updateStatus(`已添加 ${paths.length} 个路径点`);
-}
-
-// 绘制路径
-function drawPath() {
-    // 移除旧路径
-    const oldPath = scene.getObjectByName('path-line');
-    if (oldPath) scene.remove(oldPath);
-    
-    // 创建路径线
-    const points = paths.map(p => new THREE.Vector3(p.x, p.y + 0.1, p.z));
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: 0xff4500, linewidth: 3 });
-    const line = new THREE.Line(geometry, material);
-    line.name = 'path-line';
-    scene.add(line);
-}
-
-// 设置模式
-function setMode(newMode) {
-    mode = newMode;
-    
-    // 更新按钮状态
-    document.querySelectorAll('#control-panel button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    if (newMode === 'draw-field') {
-        document.getElementById('btn-draw-field').classList.add('active');
-        updateStatus('田块绘制模式 - 在地面上点击添加边界点');
-    } else if (newMode === 'draw-path') {
-        document.getElementById('btn-draw-path').classList.add('active');
-        updateStatus('路径规划模式 - 在地面上点击添加路径点');
+    // 没有命中顶点：按模式处理（第二步：地面检测）
+    console.log('未命中顶点，按模式处理:', drawingMode);
+    if (drawingMode === 'draw-field') {
+        addFieldVertex(groundPoint);
+    } else if (drawingMode === 'draw-path') {
+        addPathPoint(groundPoint);
     } else {
-        updateStatus('就绪');
+        // 空模式：尝试拾取田块（点击田块面选中）
+        var fieldHit = pickField(groundPoint);
+        if (fieldHit) {
+            selectField(fieldHit);
+        }
     }
 }
 
-// 添加农机
-function addVehicle(type) {
-    const geometry = type === 'tractor' 
-        ? new THREE.BoxGeometry(3, 2, 4)  // 拖拉机
-        : new THREE.SphereGeometry(1, 16, 16);  // 无人机
-    
-    const material = new THREE.MeshLambertMaterial({ 
-        color: type === 'tractor' ? 0xff6347 : 0x4169e1 
-    });
-    const vehicle = new THREE.Mesh(geometry, material);
-    vehicle.castShadow = true;
-    vehicle.name = `vehicle-${vehicles.length}`;
-    vehicle.userData = { type: type, speed: 0 };
-    
-    // 放置在随机位置
-    vehicle.position.set(
-        (Math.random() - 0.5) * 40,
-        type === 'tractor' ? 1 : 5,
-        (Math.random() - 0.5) * 40
-    );
-    
-    scene.add(vehicle);
-    vehicles.push(vehicle);
-    
-    updateStatus(`已添加 ${type === 'tractor' ? '拖拉机' : '无人机'} #${vehicles.length}`);
+/**
+ * 射线拾取田块面
+ */
+function pickField(groundPoint) {
+    raycaster.setFromCamera(mouse, camera);
+    if (!terrainGround) return null;
+    var hits = raycaster.intersectObject(terrainGround);
+    if (hits.length > 0) return null;
+
+    // 射线检测田块mesh
+    var meshes = [];
+    for (var i = 0; i < fieldList.length; i++) {
+        if (fieldList[i].mesh) meshes.push(fieldList[i].mesh);
+    }
+    var fieldHits = raycaster.intersectObjects(meshes);
+    if (fieldHits.length > 0) {
+        var fid = fieldHits[0].object.userData.fieldId;
+        return fid;
+    }
+    return null;
 }
 
-// 开始仿真
-function startSimulation() {
-    if (vehicles.length === 0) {
-        updateStatus('请先添加至少一台设备');
+/**
+ * 鼠标按下：优先检测顶点（开始拖拽），其次右键相机旋转
+ */
+function onMouseDown(event) {
+    if (event.button === 0) {
+        // 左键：优先顶点拖拽
+        var groundPoint = getGroundPoint(event);
+        if (groundPoint) {
+            var vertexHit = pickVertex(groundPoint);
+            if (vertexHit) {
+                // 命中顶点 → 开始拖拽
+                isDraggingVertex = true;
+                selectVertex(vertexHit);
+                event.stopPropagation(); // 关键：阻止传播，不触发相机旋转
+                return;
+            }
+        }
+    }
+
+    if (event.button === 2) {
+        // 右键：开始相机旋转
+        isDragging = true;
+        isDraggingCamera = true;
+        previousMousePosition = { x: event.clientX, y: event.clientY };
+        event.preventDefault();
+    }
+}
+
+/**
+ * 鼠标移动：顶点拖拽 或 相机旋转
+ */
+function onMouseMove(event) {
+    if (isDraggingVertex) {
+        // 顶点拖拽中
+        updateDragVertex(event);
         return;
     }
-    
-    mode = 'simulate';
-    document.getElementById('btn-start-sim').classList.add('active');
-    updateStatus('仿真进行中...');
-    
-    // 简单移动动画
-    vehicles.forEach((vehicle, index) => {
-        animateVehicle(vehicle, index);
-    });
-}
 
-// 农机动画
-function animateVehicle(vehicle, index) {
-    const type = vehicle.userData.type;
-    const direction = new THREE.Vector3(
-        Math.random() - 0.5,
-        0,
-        Math.random() - 0.5
-    ).normalize();
-    
-    function move() {
-        if (mode !== 'simulate') return;
-        
-        vehicle.position.add(direction.clone().multiplyScalar(0.1));
-        
-        // 边界检查
-        if (Math.abs(vehicle.position.x) > 50 || Math.abs(vehicle.position.z) > 50) {
-            direction.negate();
-        }
-        
-        requestAnimationFrame(move);
+    if (isDragging && isDraggingCamera) {
+        // 相机旋转
+        var dx = event.clientX - previousMousePosition.x;
+        var dy = event.clientY - previousMousePosition.y;
+        var spherical = new THREE.Spherical();
+        spherical.setFromVector3(camera.position);
+        spherical.theta -= dx * 0.01;
+        spherical.phi -= dy * 0.01;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, spherical.phi));
+        camera.position.setFromSpherical(spherical);
+        camera.lookAt(0, 0, 0);
+        previousMousePosition = { x: event.clientX, y: event.clientY };
     }
-    
-    move();
 }
 
-// 重置场景
-function resetScene() {
-    // 移除所有路径点和线
-    scene.children.filter(child => 
-        child.name === 'path-point' || child.name === 'path-line'
-    ).forEach(child => scene.remove(child));
-    
-    // 移除田块
-    const fieldMesh = scene.getObjectByName('field-mesh');
-    if (fieldMesh) scene.remove(fieldMesh);
-    
-    // 移除所有农机
-    vehicles.forEach(vehicle => scene.remove(vehicle));
-    
-    // 重置数据
-    fieldPoints = [];
-    paths = [];
-    vehicles = [];
-    mode = 'none';
-    
-    // 移除按钮 active 状态
-    document.querySelectorAll('#control-panel button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    updateStatus('场景已重置');
+/**
+ * 鼠标释放
+ */
+function onMouseUp(event) {
+    if (isDraggingVertex) {
+        endDragVertex(event);
+    }
+    isDragging = false;
+    isDraggingCamera = false;
 }
 
-// 更新状态栏
-function updateStatus(text) {
-    document.getElementById('status').textContent = text;
+/**
+ * 右键菜单
+ */
+function onContextMenu(event) {
+    event.preventDefault();
+    if (drawingMode === 'draw-field' && drawingPoints.length >= 3) {
+        closeField();
+    } else if (drawingMode === 'draw-path' && drawingPoints.length >= 2) {
+        closePath();
+    }
 }
 
-// 窗口大小变化处理
-function onWindowResize() {
+/**
+ * 双击：闭合田块
+ */
+function onDoubleClick(event) {
+    if (drawingMode === 'draw-field' && drawingPoints.length >= 3) {
+        closeField();
+    } else if (drawingMode === 'draw-path' && drawingPoints.length >= 2) {
+        closePath();
+    }
+}
+
+/**
+ * 键盘按键
+ */
+function onKeyDown(event) {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+        // 阻止默认行为（避免页面后退）
+        event.preventDefault();
+        deleteSelectedVertex();
+    }
+    // ESC：取消当前绘制
+    if (event.key === 'Escape') {
+        if (drawingMode === 'draw-field' || drawingMode === 'draw-path') {
+            cancelDrawing();
+        }
+    }
+}
+
+/**
+ * 获取射线与地面交点
+ */
+function getGroundPoint(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    if (!terrainGround) return null;
+    var hits = raycaster.intersectObject(terrainGround);
+    if (hits.length > 0) return hits[0].point;
+    return null;
+}
+
+/**
+ * 滚轮缩放
+ */
+function onWheel(event) {
+    event.preventDefault();
+    var dist = camera.position.length();
+    var newDist = dist * (1 + event.deltaY * 0.001);
+    camera.position.normalize().multiplyScalar(Math.max(15, Math.min(200, newDist)));
+}
+
+/**
+ * 窗口大小变化
+ */
+function onResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// 动画循环
+// ==================== 模式切换 ====================
+
+function setDrawFieldMode() {
+    if (drawingMode === 'draw-path') cleanupPathDrawing();
+    deselectVertex();
+    deselectAllFields();
+    startDrawField();
+}
+
+function setDrawPathMode() {
+    if (drawingMode === 'draw-field') cleanupDrawing();
+    startDrawPath();
+}
+
+function generatePath() {
+    var path = generateBoustrophedonPath();
+    if (path && deviceList.length > 0) {
+        bindFirstDeviceToPath(path.id);
+    }
+}
+
+function startSim() {
+    startDeviceSimulation();
+}
+
+function resetScene() {
+    stopDeviceSimulation();
+
+    // 清理绘制状态
+    if (drawingMode === 'draw-field') cleanupDrawing();
+    if (drawingMode === 'draw-path') cleanupPathDrawing();
+    drawingMode = 'none';
+
+    // 清理编辑状态
+    deselectVertex();
+    deselectAllFields();
+    for (var fid in editingVertexMeshes) {
+        hideEditingMarkers(fid);
+    }
+    editingVertexMeshes = {};
+    editingFieldId = null;
+
+    // 清空所有数据
+    clearAllFields();
+    clearAllPaths();
+    clearAllDevices();
+
+    setActiveButton(null);
+    setStatus('场景已重置，所有数据已清空');
+}
+
+function addTractor() {
+    var pos = new THREE.Vector3(
+        (Math.random() - 0.5) * 40, 0,
+        (Math.random() - 0.5) * 40
+    );
+    addTractorDevice(pos);
+}
+
+function addDrone() {
+    var pos = new THREE.Vector3(
+        (Math.random() - 0.5) * 40, 0,
+        (Math.random() - 0.5) * 40
+    );
+    addDroneDevice(pos);
+}
+
+// ==================== 渲染循环 ====================
+
 function animate() {
     requestAnimationFrame(animate);
     renderer.render(scene, camera);
 }
 
-// 页面加载完成后初始化
+// 启动
 window.onload = init;

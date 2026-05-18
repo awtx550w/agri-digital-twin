@@ -6,10 +6,13 @@
     <title>农业数字孪生系统</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Microsoft YaHei', sans-serif; overflow: hidden; background: #1a1a1a; }
+        body { 
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; 
+            overflow: hidden; 
+            background: #1a1a1a; 
+        }
         
         #container { position: relative; width: 100vw; height: 100vh; }
-        
         #canvas-container { width: 100%; height: 100%; }
         
         #control-panel {
@@ -18,47 +21,62 @@
             left: 20px;
             background: rgba(255, 255, 255, 0.95);
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            max-width: 300px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 260px;
+            z-index: 100;
         }
         
         #control-panel h2 {
             margin-bottom: 15px;
-            color: #2c3e50;
+            color: #1B5E20;
             font-size: 18px;
+            text-align: center;
+            border-bottom: 2px solid #81C784;
+            padding-bottom: 10px;
         }
         
-        .control-group {
+        .section {
             margin-bottom: 15px;
         }
         
-        .control-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #555;
-            font-size: 14px;
+        .section-title {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: bold;
         }
         
-        .control-group button {
+        button {
             width: 100%;
             padding: 10px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             border: none;
-            border-radius: 4px;
-            background: #3498db;
+            border-radius: 6px;
+            background: #42A5F5;
             color: white;
             cursor: pointer;
             font-size: 14px;
-            transition: background 0.3s;
+            transition: all 0.2s;
+            font-family: inherit;
         }
         
-        .control-group button:hover {
-            background: #2980b9;
+        button:hover {
+            background: #1E88E5;
+            transform: translateY(-1px);
         }
         
-        .control-group button.active {
-            background: #27ae60;
+        button.active {
+            background: #66BB6A;
+            box-shadow: 0 2px 8px rgba(102, 187, 106, 0.4);
+        }
+        
+        button.secondary {
+            background: #78909C;
+        }
+        
+        button.secondary:hover {
+            background: #607D8B;
         }
         
         #status {
@@ -66,11 +84,60 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #81C784;
+            padding: 12px 24px;
+            border-radius: 25px;
             font-size: 14px;
+            z-index: 100;
+            border: 1px solid #66BB6A;
+            max-width: 90%;
+            text-align: center;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 180px;
+            z-index: 100;
+            font-size: 13px;
+        }
+        
+        #info-panel h3 {
+            color: #1B5E20;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        #info-panel .stat {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+            padding: 4px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        #info-panel .stat:last-child {
+            border-bottom: none;
+        }
+        
+        #info-panel .value {
+            color: #E53935;
+            font-weight: bold;
+        }
+        
+        .hint {
+            font-size: 11px;
+            color: #888;
+            line-height: 1.4;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed #ddd;
         }
     </style>
 </head>
@@ -78,32 +145,72 @@
     <div id="container">
         <div id="canvas-container"></div>
         
+        <!-- 控制面板 -->
         <div id="control-panel">
             <h2>🌾 农业数字孪生</h2>
             
-            <div class="control-group">
-                <label>绘制模式</label>
-                <button id="btn-draw-field" onclick="setMode('draw-field')">绘制田块</button>
-                <button id="btn-draw-path" onclick="setMode('draw-path')">规划路径</button>
+            <div class="section">
+                <div class="section-title">绘制模式</div>
+                <button id="btn-draw-field" onclick="setDrawFieldMode()">📍 绘制田块</button>
+                <button id="btn-draw-path" onclick="setDrawPathMode()">🛤️ 规划路径</button>
+                <button class="secondary" onclick="generatePath()">⚡ 生成弓字形路径</button>
             </div>
             
-            <div class="control-group">
-                <label>仿真控制</label>
-                <button id="btn-start-sim" onclick="startSimulation()">开始仿真</button>
-                <button id="btn-reset" onclick="resetScene()">重置场景</button>
+            <div class="section">
+                <div class="section-title">仿真控制</div>
+                <button id="btn-start-sim" onclick="startSim()">▶️ 开始仿真</button>
+                <button class="secondary" onclick="clearAllPathsUI()">🗑️ 清除路径</button>
+                <button class="secondary" onclick="resetScene()">🔄 重置场景</button>
             </div>
             
-            <div class="control-group">
-                <label>设备选择</label>
-                <button onclick="addVehicle('tractor')">添加拖拉机</button>
-                <button onclick="addVehicle('drone')">添加无人机</button>
+            <div class="section">
+                <div class="section-title">添加设备</div>
+                <button onclick="addTractor()">🚜 拖拉机</button>
+                <button onclick="addDrone()">🚁 无人机</button>
+            </div>
+            
+            <div class="hint">
+                💡 操作说明：<br>
+                • 左键点击：添加顶点<br>
+                • 右键/双击：闭合田块<br>
+                • 右键拖拽：旋转视角<br>
+                • 滚轮：缩放视角<br><br>
+                🟢 绿色 = 作业线（沿主轴方向）<br>
+                🟠 橙色 = 转弯段（连接作业线）
             </div>
         </div>
         
-        <div id="status">就绪 - 点击按钮开始操作</div>
+        <!-- 状态面板 -->
+        <div id="info-panel">
+            <h3>📊 当前状态</h3>
+            <div class="stat">
+                <span>田块顶点数</span>
+                <span class="value" id="field-count">0</span>
+            </div>
+            <div class="stat">
+                <span>路径点总数</span>
+                <span class="value" id="path-count">0</span>
+            </div>
+            <div class="stat">
+                <span>设备数量</span>
+                <span class="value" id="device-count">0</span>
+            </div>
+        </div>
+        
+        <div id="status">初始化中...</div>
     </div>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    
+    <!-- 组件模块 -->
+    <script src="data.js"></script>
+    <script src="Terrain.js"></script>
+    <script src="FieldManager.js"></script>
+    <script src="PathManager.js"></script>
+    <script src="DeviceManager.js"></script>
+    
+    <!-- 主程序 -->
     <script src="app.js"></script>
 </body>
 </html>

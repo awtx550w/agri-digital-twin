@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>农业数字孪生系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; overflow: hidden; background: #1a1a1a; }
+        
+        #container { position: relative; width: 100vw; height: 100vh; }
+        
+        #canvas-container { width: 100%; height: 100%; }
+        
+        #control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 300px;
+        }
+        
+        #control-panel h2 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        .control-group button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: none;
+            border-radius: 4px;
+            background: #3498db;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .control-group button:hover {
+            background: #2980b9;
+        }
+        
+        .control-group button.active {
+            background: #27ae60;
+        }
+        
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container"></div>
+        
+        <div id="control-panel">
+            <h2>🌾 农业数字孪生</h2>
+            
+            <div class="control-group">
+                <label>绘制模式</label>
+                <button id="btn-draw-field" onclick="setMode('draw-field')">绘制田块</button>
+                <button id="btn-draw-path" onclick="setMode('draw-path')">规划路径</button>
+            </div>
+            
+            <div class="control-group">
+                <label>仿真控制</label>
+                <button id="btn-start-sim" onclick="startSimulation()">开始仿真</button>
+                <button id="btn-reset" onclick="resetScene()">重置场景</button>
+            </div>
+            
+            <div class="control-group">
+                <label>设备选择</label>
+                <button onclick="addVehicle('tractor')">添加拖拉机</button>
+                <button onclick="addVehicle('drone')">添加无人机</button>
+            </div>
+        </div>
+        
+        <div id="status">就绪 - 点击按钮开始操作</div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
